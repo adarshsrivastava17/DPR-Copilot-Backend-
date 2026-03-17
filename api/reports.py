@@ -1,4 +1,4 @@
-﻿"""Reports API router: generate DPR, list reports, get report, regenerate section, export."""
+"""Reports API router: generate DPR, list reports, get report, regenerate section, export."""
 import threading
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
@@ -37,6 +37,7 @@ class GenerateRequest(BaseModel):
     project_id: str
     custom_instructions: Optional[str] = None
     target_pages: Optional[int] = 30
+    selected_sections: Optional[list] = None  # e.g. ["executive_summary", "project_cost", ...]
 
 
 class SectionUpdateRequest(BaseModel):
@@ -78,7 +79,7 @@ async def generate_dpr(
 
     thread = threading.Thread(
         target=_generate_dpr_sync,
-        args=(report_id, project_id, project_inputs, project_name, req.custom_instructions, req.target_pages or 30),
+        args=(report_id, project_id, project_inputs, project_name, req.custom_instructions, req.target_pages or 30, req.selected_sections),
         daemon=True,
     )
     thread.start()
@@ -1019,7 +1020,7 @@ Date: Current Date"""
 
 
 def _generate_dpr_sync(
-    report_id: str, project_id: str, inputs: dict, project_name: str, custom_instructions: str | None, target_pages: int = 30
+    report_id: str, project_id: str, inputs: dict, project_name: str, custom_instructions: str | None, target_pages: int = 30, selected_sections: list | None = None
 ):
     """Generate DPR — tries OpenAI first, falls back to templates if no quota."""
     from financial.models import generate_financial_data
@@ -1028,20 +1029,28 @@ def _generate_dpr_sync(
     SyncSession = sessionmaker(bind=sync_engine)
 
     try:
+        # Use selected sections or all sections
+        sections_to_generate = selected_sections if selected_sections else FAST_SECTIONS
+        # Validate: only allow known section keys
+        sections_to_generate = [s for s in sections_to_generate if s in SECTION_NAMES]
+        if not sections_to_generate:
+            sections_to_generate = FAST_SECTIONS
+
         print(f"\n{'='*60}")
-        print(f"[DPR] 🚀 Starting generation for: {project_name} ({target_pages} pages)")
+        print(f"[DPR] 🚀 Starting generation for: {project_name} ({target_pages} pages, {len(sections_to_generate)} sections)")
         print(f"{'='*60}")
 
         financial_data = generate_financial_data(inputs)
         generated_sections = {}
-        total = len(FAST_SECTIONS)
+        total = len(sections_to_generate)
         use_template = False
 
         # Try OpenAI for first section, if it fails use templates for all
         from openai import OpenAI
         client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
-        for i, section_key in enumerate(FAST_SECTIONS, 1):
+        # Adjust words per section based on actual section count
+        for i, section_key in enumerate(sections_to_generate, 1):
             section_name = SECTION_NAMES.get(section_key, section_key)
             print(f"[DPR] ({i}/{total}) Generating: {section_name}...")
 

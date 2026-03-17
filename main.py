@@ -29,10 +29,12 @@ app = FastAPI(
 )
 
 # CORS — allow all origins for production + dev
+# Note: allow_credentials=False because we use Bearer tokens, not cookies.
+# Browsers reject credentials=True with origins=["*"].
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
