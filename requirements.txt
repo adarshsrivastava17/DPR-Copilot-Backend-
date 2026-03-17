@@ -6,12 +6,12 @@ python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 pydantic-settings==2.1.0
 
-# Database (SQLite for local dev)
+# Database
 sqlalchemy==2.0.25
 aiosqlite==0.20.0
 alembic==1.13.1
-# asyncpg==0.29.0          # Uncomment for PostgreSQL production
-# psycopg2-binary==2.9.9   # Uncomment for PostgreSQL production
+asyncpg==0.29.0
+psycopg2-binary==2.9.9
 
 # Document Parsing
 PyMuPDF==1.23.22
