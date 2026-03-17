@@ -28,14 +28,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS — allow all common dev ports
+# CORS — allow all origins for production + dev
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000", "http://localhost:3001", "http://localhost:3002",
-        "http://localhost:3003", "http://127.0.0.1:3000", "http://127.0.0.1:3002",
-        settings.FRONTEND_URL,
-    ],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -57,6 +53,18 @@ app.include_router(projects_router)
 app.include_router(documents_router)
 app.include_router(reports_router)
 app.include_router(export_router)
+
+
+# ─── Root Endpoint ────────────────────────────────────
+@app.get("/")
+async def root():
+    return {
+        "app": settings.APP_NAME,
+        "version": settings.APP_VERSION,
+        "status": "running",
+        "docs": "/docs",
+        "message": "Welcome to DPR Copilot API. Visit /docs for interactive documentation.",
+    }
 
 
 # ─── Health Check ─────────────────────────────────────
