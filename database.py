@@ -29,8 +29,11 @@ async def get_db():
         try:
             yield session
             await session.commit()
-        except Exception:
+        except Exception as e:
             await session.rollback()
+            print(f"[DB] ❌ Session error: {e}")
+            import traceback
+            traceback.print_exc()
             raise
 
 

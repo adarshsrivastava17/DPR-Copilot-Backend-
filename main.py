@@ -76,7 +76,45 @@ async def health_check():
         "status": "healthy",
         "app": settings.APP_NAME,
         "version": settings.APP_VERSION,
+        "database_url_type": "postgresql" if "postgresql" in settings.DATABASE_URL else "sqlite",
     }
+
+
+# ─── Global Exception Handler ────────────────────────
+from fastapi import Request
+from fastapi.responses import JSONResponse
+import traceback as tb
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    error_detail = f"{type(exc).__name__}: {str(exc)}"
+    print(f"[GLOBAL] ❌ Unhandled error: {error_detail}")
+    tb.print_exc()
+    return JSONResponse(
+        status_code=500,
+        content={"detail": error_detail, "type": type(exc).__name__},
+    )
+
+
+# ─── Debug: Test DB ──────────────────────────────────
+@app.get("/api/debug/test-db")
+async def test_db():
+    """Test database connectivity and table existence."""
+    from database import get_db, async_session
+    try:
+        async with async_session() as session:
+            from sqlalchemy import text
+            result = await session.execute(text("SELECT 1"))
+            row = result.scalar()
+            # Check tables
+            if "postgresql" in settings.DATABASE_URL:
+                tables_result = await session.execute(text("SELECT tablename FROM pg_tables WHERE schemaname='public'"))
+            else:
+                tables_result = await session.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
+            tables = [r[0] for r in tables_result.fetchall()]
+        return {"db": "connected", "test_query": row, "tables": tables}
+    except Exception as e:
+        return {"db": "error", "error": f"{type(e).__name__}: {str(e)}"}
 
 
 # ─── Ingestion Endpoint ──────────────────────────────
