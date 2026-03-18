@@ -659,26 +659,10 @@ def _format_inr(amount):
 
 
 def _build_themed_table(data: dict, title: str, styles, business_type: str = ""):
-    # Detect service-type businesses for adaptive labels
-    SERVICE_TYPES = {"service", "services", "logistics", "consulting", "consultancy",
-                     "it", "software", "technology", "trading", "transport",
-                     "transportation", "education", "healthcare", "hospitality",
-                     "real estate", "retail", "e-commerce", "ecommerce",
-                     "digital", "marketing", "agency", "staffing", "finance",
-                     "fintech", "insurance", "travel", "tourism"}
-    bt_lower = business_type.lower() if business_type else ""
-    is_service = any(s in bt_lower for s in SERVICE_TYPES)
-
-    if is_service:
-        labels = [("Office Lease / Setup", "land_and_site"), ("Office Interiors & Furnishing", "building_civil"),
-                  ("Equipment & Technology", "plant_machinery"), ("Misc. Fixed Assets", "misc_fixed_assets"),
-                  ("Pre-operative Exp.", "preoperative_expenses"), ("Contingency", "contingency"),
-                  ("Working Capital", "working_capital_margin")]
-    else:
-        labels = [("Land & Site", "land_and_site"), ("Building & Civil", "building_civil"),
-                  ("Plant & Machinery", "plant_machinery"), ("Misc. Fixed Assets", "misc_fixed_assets"),
-                  ("Pre-operative Exp.", "preoperative_expenses"), ("Contingency", "contingency"),
-                  ("Working Capital", "working_capital_margin")]
+    # Use central biz_config for consistent business-type detection
+    from biz_config import get_biz_config
+    cfg = get_biz_config(business_type)
+    labels = cfg["cost_labels"]
 
     header = [Paragraph("Particulars", styles["table_header"]), Paragraph("Amount (Rs.)", styles["table_header"])]
     rows = [header]

@@ -172,69 +172,26 @@ def _generate_template(section_key: str, inputs: dict, project_name: str, target
     contact_gst = inputs.get("contact_gst", "") or ""
     contact_pan = inputs.get("contact_pan", "") or ""
 
-    # ─── Business-type detection for adaptive templates ─────
+    # ─── Granular business-type detection for truly specific templates ─────
+    from biz_config import detect_business_category, get_biz_config
     btype_lower = btype.lower()
-    SERVICE_TYPES = {"service", "services", "logistics", "consulting", "consultancy",
-                     "it", "software", "technology", "trading", "transport",
-                     "transportation", "education", "healthcare", "hospitality",
-                     "real estate", "retail", "e-commerce", "ecommerce",
-                     "digital", "marketing", "agency", "staffing", "finance",
-                     "fintech", "insurance", "travel", "tourism"}
-    is_service = any(s in btype_lower for s in SERVICE_TYPES)
+    biz_cat = detect_business_category(btype)
+    cfg = get_biz_config(btype)
+    is_service = biz_cat not in ("manufacturing", "food")
 
-    # Adaptive terminology based on business type
-    if is_service:
-        asset_label = "Equipment & Technology"
-        asset_line = "Equipment & Technology Infrastructure"
-        process_label = "Service Delivery Process"
-        facility_label = "Office / Facility"
-        dept_prod_name = "Operations Department"
-        worker_label = "Operations Staff"
-        helper_label = "Support Staff"
-        process_steps = [
-            "1. **Client Acquisition** → Lead generation, proposals, and onboarding",
-            "2. **Requirement Analysis** → Understanding client needs and scope definition",
-            "3. **Service Planning** → Resource allocation and scheduling",
-            "4. **Service Delivery** → Core service execution and operations",
-            "5. **Quality Assurance** → Service quality checks and client feedback",
-            "6. **Reporting & Billing** → Documentation, invoicing, and follow-up",
-            "7. **After-Sales Support** → Ongoing client support and relationship management",
-        ]
-        facility_layout = [
-            "- **Operations Area**: 40% of floor area — main service delivery workspace",
-            "- **Client Meeting Rooms**: 15% — professional meeting and conference spaces",
-            "- **Management Offices**: 15% — leadership and administration",
-            "- **Staff Workstations**: 15% — employee workspace with IT infrastructure",
-            "- **Storage / Server Room**: 5% — equipment and IT infrastructure",
-            "- **Utilities & Pantry**: 10% — staff amenities and common areas",
-        ]
-        infra_power = "Single-phase commercial connection"
-    else:
-        asset_label = "Plant & Machinery"
-        asset_line = "Plant & Machinery"
-        process_label = "Production Process Flow"
-        facility_label = "Factory / Workshop"
-        dept_prod_name = "Production Department"
-        worker_label = "Machine Operators"
-        helper_label = "Helpers"
-        process_steps = [
-            "1. **Raw Material Procurement** → Quality inspection and storage",
-            "2. **Pre-Processing** → Material preparation and conditioning",
-            "3. **Main Processing** → Core production/manufacturing",
-            "4. **Quality Testing** → In-process and final quality verification",
-            "5. **Finishing** → Final processing, grading, and sorting",
-            "6. **Packaging** → Professional packaging and labeling",
-            "7. **Dispatch** → Storage, logistics, and delivery",
-        ]
-        facility_layout = [
-            "- **Production Hall**: 60% of building area — housing all production machinery",
-            "- **Raw Material Storage**: 15% — climate-controlled storage for raw materials",
-            "- **Finished Goods Store**: 10% — organized storage with FIFO system",
-            "- **Quality Lab**: 5% — testing and inspection area",
-            "- **Office & Admin**: 5% — management offices and meeting room",
-            "- **Utilities Area**: 5% — DG set, compressor, water treatment",
-        ]
-        infra_power = "3-phase industrial connection"
+    asset_label = cfg["asset_label"]
+    asset_line = cfg["asset_line"]
+    process_label = cfg["process_label"]
+    facility_label = cfg["facility_label"]
+    dept_prod_name = cfg["dept_prod"]
+    worker_label = cfg["worker"]
+    helper_label = cfg["helper"]
+    cost_line_items = cfg["cost_labels"]
+    equipment_list_rows = cfg["equipment_list"]
+    process_steps = cfg["process_steps"]
+    facility_layout = cfg["facility_layout"]
+    infra_power = cfg["infra_power"]
+
 
     # ─── Parse ALL financial values to numbers ─────────
     tpc_num = _parse_amount(inputs.get("total_project_cost", 0))
@@ -719,6 +676,12 @@ Primary raw materials: {raw_materials}
     # Pre-compute joined strings (backslashes not allowed in f-string expressions in Python 3.11)
     process_steps_text = "\n".join(process_steps)
     facility_layout_text = "\n".join(facility_layout)
+    equipment_list_text = "\n".join(equipment_list_rows)
+    # Build cost line items for project cost table
+    cost_table_rows = "\n".join(
+        f"| {i+1} | {label} | {{{key}}} |" if key in ('plant_machinery',) else f"| {i+1} | {label} | placeholder |"
+        for i, (label, key) in enumerate(cost_line_items)
+    )
 
     base_tech = f"""## Technical Feasibility & Production
 
@@ -757,21 +720,14 @@ The project will employ modern, proven {'systems and platforms' if is_service el
 
     ext1_tech = f"""
 
-### Detailed {'Equipment' if is_service else 'Machinery'} List
-| Sr. | {'Equipment / System' if is_service else 'Equipment'} | Quantity | {'Vendor' if is_service else 'Make'} | Cost (₹) |
+### Detailed {asset_label} List
+| Sr. | Item | Quantity | Make/Vendor | Cost (₹) |
 |-----|-----------|----------|------|----------|
-{'| 1 | Computers & Workstations | 1 Lot | Branded/Assembled | 5,00,000 |' if is_service else '| 1 | Primary Processing Machine | 2 | Reputed Indian | 8,00,000 |'}
-{'| 2 | Software & Licenses | 1 Lot | Various Vendors | 3,00,000 |' if is_service else '| 2 | Secondary Processing Unit | 1 | Reputed Indian | 5,00,000 |'}
-{'| 3 | Networking & IT Infrastructure | 1 Set | Standard | 2,00,000 |' if is_service else '| 3 | Quality Testing Equipment | 1 Set | Imported/Indian | 3,00,000 |'}
-{'| 4 | Office Furniture & Fixtures | 1 Lot | Branded | 3,00,000 |' if is_service else '| 4 | Packaging Machine | 1 | Indian Make | 2,50,000 |'}
-{'| 5 | Communication Systems | 1 Set | Standard | 1,50,000 |' if is_service else '| 5 | Material Handling Equipment | 1 Set | Indian Make | 1,50,000 |'}
-{'| 6 | GPS & Tracking Systems | 1 Set | Branded | 2,00,000 |' if is_service else '| 6 | Weighing & Measuring | 1 Set | Calibrated Standard | 1,00,000 |'}
-{'| 7 | Vehicles / Transport | As needed | Various | 5,00,000 |' if is_service else '| 7 | Auxiliary Equipment | 1 Lot | Various | 2,00,000 |'}
-{'| 8 | Electrical & UPS Installation | 1 Lot | Standard | 1,50,000 |' if is_service else '| 8 | Electrical Installation | 1 Lot | Standard | 1,50,000 |'}
-| | **Total {'Equipment' if is_service else 'Machinery'} Cost** | | | **{machinery_cost}** |
+{equipment_list_text}
+| | **Total {asset_label} Cost** | | | **{machinery_cost}** |
 
 ### {facility_label} Layout Plan
-The {'office/facility' if is_service else 'factory building'} at {loc_full} will be organized as follows:
+The {facility_label.lower()} at {loc_full} will be organized as follows:
 {facility_layout_text}"""
 
     sections_content["technical_details"] = base_tech + (ext1_tech if pages_per_section >= 1.5 else "")
@@ -781,13 +737,13 @@ The {'office/facility' if is_service else 'factory building'} at {loc_full} will
 ### Total Project Cost
 | Sr. No. | Particulars | Amount (₹) |
 |---------|------------|------------|
-| 1 | {'Lease Deposit / Office Setup' if is_service else 'Land & Site Development'} | {land_cost_f} |
-| 2 | {'Office Interiors & Civil Works' if is_service else 'Building & Civil Works'} | {building_cost_f} |
-| 3 | {asset_line} | {machinery_cost} |
-| 4 | Misc. Fixed Assets | {misc_assets_f} |
-| 5 | Pre-operative Expenses | {preop_cost_f} |
-| 6 | Contingency | {contingency_f} |
-| 7 | Working Capital Margin | {wc_margin_f} |
+| 1 | {cost_line_items[0][0]} | {land_cost_f} |
+| 2 | {cost_line_items[1][0]} | {building_cost_f} |
+| 3 | {cost_line_items[2][0]} | {machinery_cost} |
+| 4 | {cost_line_items[3][0]} | {misc_assets_f} |
+| 5 | {cost_line_items[4][0]} | {preop_cost_f} |
+| 6 | {cost_line_items[5][0]} | {contingency_f} |
+| 7 | {cost_line_items[6][0]} | {wc_margin_f} |
 | | **Total Project Cost** | **{total_cost}** |
 
 ### Means of Finance
