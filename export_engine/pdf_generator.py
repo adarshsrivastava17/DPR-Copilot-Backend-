@@ -139,7 +139,7 @@ class CoverPage(Flowable):
         c.setFont("Helvetica", 9)
         c.drawString(box_x + 15, box_y + 35, "Prepared by")
         c.setFont("Helvetica-Bold", 13)
-        c.drawString(box_x + 15, box_y + 14, "DPR Copilot AI")
+        c.drawString(box_x + 15, box_y + 14, self.project_name)
 
         # Date on right side of box
         c.setFont("Helvetica", 9)
@@ -612,7 +612,7 @@ def _draw_cover_page(canvas, doc):
     c.setFont("Helvetica", 9)
     c.drawString(box_x + 15, box_y + 35, "Prepared by")
     c.setFont("Helvetica-Bold", 13)
-    c.drawString(box_x + 15, box_y + 14, "DPR Copilot AI")
+    c.drawString(box_x + 15, box_y + 14, project_name)
     c.setFont("Helvetica", 9)
     c.drawString(box_x + box_w - 160, box_y + 35, "Date")
     c.setFont("Helvetica-Bold", 12)
@@ -643,7 +643,7 @@ def _add_header_footer(canvas, doc):
     canvas.rect(0, 22, w, 2, fill=1, stroke=0)
     canvas.setFont("Helvetica", 7)
     canvas.setFillColor(WHITE)
-    canvas.drawString(50, 7, "DPR Copilot — AI-Powered Project Reports")
+    canvas.drawString(50, 7, f"{doc.project_name} — Detailed Project Report" if hasattr(doc, 'project_name') else "Detailed Project Report")
     canvas.drawRightString(w - 50, 7, f"Page {doc.page}")
 
     canvas.restoreState()

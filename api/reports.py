@@ -172,6 +172,70 @@ def _generate_template(section_key: str, inputs: dict, project_name: str, target
     contact_gst = inputs.get("contact_gst", "") or ""
     contact_pan = inputs.get("contact_pan", "") or ""
 
+    # ─── Business-type detection for adaptive templates ─────
+    btype_lower = btype.lower()
+    SERVICE_TYPES = {"service", "services", "logistics", "consulting", "consultancy",
+                     "it", "software", "technology", "trading", "transport",
+                     "transportation", "education", "healthcare", "hospitality",
+                     "real estate", "retail", "e-commerce", "ecommerce",
+                     "digital", "marketing", "agency", "staffing", "finance",
+                     "fintech", "insurance", "travel", "tourism"}
+    is_service = any(s in btype_lower for s in SERVICE_TYPES)
+
+    # Adaptive terminology based on business type
+    if is_service:
+        asset_label = "Equipment & Technology"
+        asset_line = "Equipment & Technology Infrastructure"
+        process_label = "Service Delivery Process"
+        facility_label = "Office / Facility"
+        dept_prod_name = "Operations Department"
+        worker_label = "Operations Staff"
+        helper_label = "Support Staff"
+        process_steps = [
+            "1. **Client Acquisition** → Lead generation, proposals, and onboarding",
+            "2. **Requirement Analysis** → Understanding client needs and scope definition",
+            "3. **Service Planning** → Resource allocation and scheduling",
+            "4. **Service Delivery** → Core service execution and operations",
+            "5. **Quality Assurance** → Service quality checks and client feedback",
+            "6. **Reporting & Billing** → Documentation, invoicing, and follow-up",
+            "7. **After-Sales Support** → Ongoing client support and relationship management",
+        ]
+        facility_layout = [
+            "- **Operations Area**: 40% of floor area — main service delivery workspace",
+            "- **Client Meeting Rooms**: 15% — professional meeting and conference spaces",
+            "- **Management Offices**: 15% — leadership and administration",
+            "- **Staff Workstations**: 15% — employee workspace with IT infrastructure",
+            "- **Storage / Server Room**: 5% — equipment and IT infrastructure",
+            "- **Utilities & Pantry**: 10% — staff amenities and common areas",
+        ]
+        infra_power = "Single-phase commercial connection"
+    else:
+        asset_label = "Plant & Machinery"
+        asset_line = "Plant & Machinery"
+        process_label = "Production Process Flow"
+        facility_label = "Factory / Workshop"
+        dept_prod_name = "Production Department"
+        worker_label = "Machine Operators"
+        helper_label = "Helpers"
+        process_steps = [
+            "1. **Raw Material Procurement** → Quality inspection and storage",
+            "2. **Pre-Processing** → Material preparation and conditioning",
+            "3. **Main Processing** → Core production/manufacturing",
+            "4. **Quality Testing** → In-process and final quality verification",
+            "5. **Finishing** → Final processing, grading, and sorting",
+            "6. **Packaging** → Professional packaging and labeling",
+            "7. **Dispatch** → Storage, logistics, and delivery",
+        ]
+        facility_layout = [
+            "- **Production Hall**: 60% of building area — housing all production machinery",
+            "- **Raw Material Storage**: 15% — climate-controlled storage for raw materials",
+            "- **Finished Goods Store**: 10% — organized storage with FIFO system",
+            "- **Quality Lab**: 5% — testing and inspection area",
+            "- **Office & Admin**: 5% — management offices and meeting room",
+            "- **Utilities Area**: 5% — DG set, compressor, water treatment",
+        ]
+        infra_power = "3-phase industrial connection"
+
     # ─── Parse ALL financial values to numbers ─────────
     tpc_num = _parse_amount(inputs.get("total_project_cost", 0))
     if tpc_num <= 0:
@@ -244,7 +308,7 @@ def _generate_template(section_key: str, inputs: dict, project_name: str, target
     base = f"""## Executive Summary
 
 ### Project Overview
-This Detailed Project Report (DPR) has been prepared for **{name}**, a proposed {btype} venture to be established at {loc_full}. The project envisions the production/provision of {products} to cater to the growing demand in both domestic and regional markets.
+This Detailed Project Report (DPR) has been prepared for **{name}**, a proposed {btype} venture to be established at {loc_full}. The project envisions the {'delivery of' if is_service else 'production/provision of'} {products} to cater to the growing demand in both domestic and regional markets.
 
 The project represents a significant business opportunity in the {btype} sector, backed by favorable market conditions, government support for MSMEs, and the promoter's domain expertise. This report presents a comprehensive analysis covering technical feasibility, financial viability, market assessment, and risk evaluation.
 
@@ -453,11 +517,11 @@ The company will implement robust governance practices:
 
 ### Detailed Department Structure
 
-#### Production Department
-- Production Manager (1) — Overall production planning and supervision
-- Quality Control Inspector (1) — Quality assurance and testing
-- Machine Operators ({int(int(employees)*0.4) if employees.isdigit() else '8'}) — Equipment operation and monitoring
-- Helpers ({int(int(employees)*0.3) if employees.isdigit() else '6'}) — Machine support and material handling
+#### {dept_prod_name}
+- {'Operations' if is_service else 'Production'} Manager (1) — Overall {'operations' if is_service else 'production'} planning and supervision
+- Quality Control {'Executive' if is_service else 'Inspector'} (1) — Quality assurance and {'monitoring' if is_service else 'testing'}
+- {worker_label} ({int(int(employees)*0.4) if employees.isdigit() else '8'}) — {'Core service delivery and client handling' if is_service else 'Equipment operation and monitoring'}
+- {helper_label} ({int(int(employees)*0.3) if employees.isdigit() else '6'}) — {'Administrative and coordination support' if is_service else 'Machine support and material handling'}
 
 #### Administration & Finance
 - Accountant (1) — Book-keeping, tax compliance, and financial reporting
@@ -655,7 +719,7 @@ Primary raw materials: {raw_materials}
     base_tech = f"""## Technical Feasibility & Production
 
 ### Technology Selection
-The project will employ modern, proven technology sourced from reputed manufacturers. The production process is designed for optimal efficiency, minimal waste, and consistent quality.
+The project will employ modern, proven {'systems and platforms' if is_service else 'technology sourced from reputed manufacturers'}. The {'service delivery' if is_service else 'production'} process is designed for optimal efficiency, {'high client satisfaction' if is_service else 'minimal waste'}, and consistent quality.
 
 ### Production Capacity
 | Parameter | Details |
@@ -670,21 +734,15 @@ The project will employ modern, proven technology sourced from reputed manufactu
 |-----------|--------------|
 | Land Area | {land_area} |
 | Building Area | {building_area} |
-| Power Supply | 3-phase industrial connection |
-| Water Supply | Municipal + borewell backup |
+| Power Supply | {infra_power} |
+| Water Supply | Municipal {'supply' if is_service else '+ borewell backup'} |
 | Manpower | {employees} persons |
 
-### Plant & Machinery
-Major machinery and equipment will be procured from reputed manufacturers with warranties and AMC. Estimated cost: **{machinery_cost}**.
+### {asset_label}
+{'Key technology infrastructure and equipment' if is_service else 'Major machinery and equipment'} will be procured from reputed {'vendors' if is_service else 'manufacturers'} with warranties and AMC. Estimated cost: **{machinery_cost}**.
 
-### Production Process Flow
-1. **Raw Material Procurement** → Quality inspection and storage
-2. **Pre-Processing** → Material preparation and conditioning
-3. **Main Processing** → Core production/manufacturing
-4. **Quality Testing** → In-process and final quality verification
-5. **Finishing** → Final processing, grading, and sorting
-6. **Packaging** → Professional packaging and labeling
-7. **Dispatch** → Storage, logistics, and delivery
+### {process_label}
+{'\n'.join(process_steps)}
 
 ### Utilities & Services
 | Utility | Specification | Monthly Cost |
@@ -695,27 +753,22 @@ Major machinery and equipment will be procured from reputed manufacturers with w
 
     ext1_tech = f"""
 
-### Detailed Machinery List
-| Sr. | Equipment | Quantity | Make | Cost (₹) |
+### Detailed {'Equipment' if is_service else 'Machinery'} List
+| Sr. | {'Equipment / System' if is_service else 'Equipment'} | Quantity | {'Vendor' if is_service else 'Make'} | Cost (₹) |
 |-----|-----------|----------|------|----------|
-| 1 | Primary Processing Machine | 2 | Reputed Indian | 8,00,000 |
-| 2 | Secondary Processing Unit | 1 | Reputed Indian | 5,00,000 |
-| 3 | Quality Testing Equipment | 1 Set | Imported/Indian | 3,00,000 |
-| 4 | Packaging Machine | 1 | Indian Make | 2,50,000 |
-| 5 | Material Handling Equipment | 1 Set | Indian Make | 1,50,000 |
-| 6 | Weighing & Measuring | 1 Set | Calibrated Standard | 1,00,000 |
-| 7 | Auxiliary Equipment | 1 Lot | Various | 2,00,000 |
-| 8 | Electrical Installation | 1 Lot | Standard | 1,50,000 |
-| | **Total Machinery Cost** | | | **{machinery_cost}** |
+{'| 1 | Computers & Workstations | 1 Lot | Branded/Assembled | 5,00,000 |' if is_service else '| 1 | Primary Processing Machine | 2 | Reputed Indian | 8,00,000 |'}
+{'| 2 | Software & Licenses | 1 Lot | Various Vendors | 3,00,000 |' if is_service else '| 2 | Secondary Processing Unit | 1 | Reputed Indian | 5,00,000 |'}
+{'| 3 | Networking & IT Infrastructure | 1 Set | Standard | 2,00,000 |' if is_service else '| 3 | Quality Testing Equipment | 1 Set | Imported/Indian | 3,00,000 |'}
+{'| 4 | Office Furniture & Fixtures | 1 Lot | Branded | 3,00,000 |' if is_service else '| 4 | Packaging Machine | 1 | Indian Make | 2,50,000 |'}
+{'| 5 | Communication Systems | 1 Set | Standard | 1,50,000 |' if is_service else '| 5 | Material Handling Equipment | 1 Set | Indian Make | 1,50,000 |'}
+{'| 6 | GPS & Tracking Systems | 1 Set | Branded | 2,00,000 |' if is_service else '| 6 | Weighing & Measuring | 1 Set | Calibrated Standard | 1,00,000 |'}
+{'| 7 | Vehicles / Transport | As needed | Various | 5,00,000 |' if is_service else '| 7 | Auxiliary Equipment | 1 Lot | Various | 2,00,000 |'}
+{'| 8 | Electrical & UPS Installation | 1 Lot | Standard | 1,50,000 |' if is_service else '| 8 | Electrical Installation | 1 Lot | Standard | 1,50,000 |'}
+| | **Total {'Equipment' if is_service else 'Machinery'} Cost** | | | **{machinery_cost}** |
 
-### Building Layout Plan
-The factory building at {loc_full} will be organized as follows:
-- **Production Hall**: 60% of building area — housing all production machinery
-- **Raw Material Storage**: 15% — climate-controlled storage for raw materials
-- **Finished Goods Store**: 10% — organized storage with FIFO system
-- **Quality Lab**: 5% — testing and inspection area
-- **Office & Admin**: 5% — management offices and meeting room
-- **Utilities Area**: 5% — DG set, compressor, water treatment"""
+### {facility_label} Layout Plan
+The {'office/facility' if is_service else 'factory building'} at {loc_full} will be organized as follows:
+{'\n'.join(facility_layout)}"""
 
     sections_content["technical_details"] = base_tech + (ext1_tech if pages_per_section >= 1.5 else "")
 
@@ -724,9 +777,9 @@ The factory building at {loc_full} will be organized as follows:
 ### Total Project Cost
 | Sr. No. | Particulars | Amount (₹) |
 |---------|------------|------------|
-| 1 | Land & Site Development | {land_cost_f} |
-| 2 | Building & Civil Works | {building_cost_f} |
-| 3 | Plant & Machinery | {machinery_cost} |
+| 1 | {'Lease Deposit / Office Setup' if is_service else 'Land & Site Development'} | {land_cost_f} |
+| 2 | {'Office Interiors & Civil Works' if is_service else 'Building & Civil Works'} | {building_cost_f} |
+| 3 | {asset_line} | {machinery_cost} |
 | 4 | Misc. Fixed Assets | {misc_assets_f} |
 | 5 | Pre-operative Expenses | {preop_cost_f} |
 | 6 | Contingency | {contingency_f} |
@@ -1098,7 +1151,7 @@ Based on our thorough analysis of all project parameters — technical feasibili
 The project is financially sound with strong profitability indicators, experienced promoter leadership, and a favorable risk profile. The term loan of **{term_loan}** is well-supported by projected cash flows with a DSCR consistently above 2.5x.
 
 ---
-*This Detailed Project Report has been prepared by DPR Copilot AI. All financial projections are based on assumptions and estimates. Actual results may vary.*"""
+*This Detailed Project Report has been prepared for **{name}**. All financial projections are based on assumptions and estimates. Actual results may vary.*"""
 
     ext1_conclusion = f"""
 
