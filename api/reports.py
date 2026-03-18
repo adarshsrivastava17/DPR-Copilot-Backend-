@@ -27,10 +27,39 @@ SECTION_NAMES = {
     "profitability": "Profitability & Financial Projections",
     "swot_analysis": "SWOT Analysis",
     "risk_assessment": "Risk Assessment & Mitigation",
+    "contact_details": "Contact Details",
     "conclusion": "Conclusion & Recommendations",
 }
 
 FAST_SECTIONS = list(SECTION_NAMES.keys())
+
+
+def _format_inr(amount) -> str:
+    """Format number as Indian Rupees: ₹7,00,000 style."""
+    from financial.models import _parse_amount as parse_amt
+    if isinstance(amount, str):
+        amount = parse_amt(amount)
+    amount = round(float(amount))
+    if amount < 0:
+        return f"-₹{_format_inr_abs(abs(amount))}"
+    return f"₹{_format_inr_abs(amount)}"
+
+
+def _format_inr_abs(n: int) -> str:
+    """Format positive integer in Indian grouping: 12,34,567"""
+    s = str(int(n))
+    if len(s) <= 3:
+        return s
+    last3 = s[-3:]
+    rest = s[:-3]
+    # Group rest in pairs from right
+    groups = []
+    while len(rest) > 2:
+        groups.insert(0, rest[-2:])
+        rest = rest[:-2]
+    if rest:
+        groups.insert(0, rest)
+    return ','.join(groups) + ',' + last3
 
 
 class GenerateRequest(BaseModel):
@@ -113,31 +142,93 @@ def _try_openai(client, prompt: str, system: str) -> str | None:
 
 def _generate_template(section_key: str, inputs: dict, project_name: str, target_pages: int = 30) -> str:
     """Generate professional DPR content using templates. Scales content based on target_pages."""
-    # Pages per section: target_pages minus 3 (cover+TOC) divided among 10 sections
-    pages_per_section = max((target_pages - 3) / 10, 0.7)
+    from financial.models import _parse_amount
 
-    name = inputs.get("business_name", project_name)
-    btype = inputs.get("business_type", "manufacturing")
-    promoter = inputs.get("promoter_name", "the promoter")
-    location = inputs.get("location", "the proposed location")
+    # Pages per section: target_pages minus 3 (cover+TOC) divided among sections
+    pages_per_section = max((target_pages - 3) / 11, 0.7)
+
+    name = inputs.get("business_name", project_name) or project_name
+    btype = inputs.get("business_type", "manufacturing") or "manufacturing"
+    promoter = inputs.get("promoter_name", "the promoter") or "the promoter"
+    location = inputs.get("location", "the proposed location") or "the proposed location"
     state = inputs.get("state", "")
-    products = inputs.get("products", "the proposed products/services")
-    total_cost = inputs.get("total_project_cost", "₹1,00,00,000")
-    term_loan = inputs.get("term_loan", "₹70,00,000")
-    contribution = inputs.get("promoter_contribution", "₹30,00,000")
-    revenue = inputs.get("annual_revenue", "₹1,50,00,000")
-    employees = inputs.get("num_employees", "25")
-    capacity = inputs.get("capacity", "as per market demand")
+    products = inputs.get("products", "the proposed products/services") or "the proposed products/services"
+    employees = inputs.get("num_employees", "25") or "25"
+    capacity = inputs.get("capacity", "as per market demand") or "as per market demand"
     loc_full = f"{location}, {state}" if state else location
-    raw_materials = inputs.get("raw_materials", "various raw materials as required")
-    target_market = inputs.get("target_market", "domestic and regional markets")
-    machinery_cost = inputs.get("machinery_cost", "₹25,00,000")
-    land_area = inputs.get("land_area", "5,000 sq. ft.")
-    building_area = inputs.get("building_area", "3,000 sq. ft.")
-    working_capital = inputs.get("working_capital", "₹10,00,000")
-    qualification = inputs.get("promoter_qualification", "Graduate with relevant professional qualifications")
-    experience = inputs.get("promoter_experience", "Significant experience in the relevant industry")
+    raw_materials = inputs.get("raw_materials", "various raw materials as required") or "various raw materials as required"
+    target_market = inputs.get("target_market", "domestic and regional markets") or "domestic and regional markets"
+    land_area = inputs.get("land_area", "5,000 sq. ft.") or "5,000 sq. ft."
+    building_area = inputs.get("building_area", "3,000 sq. ft.") or "3,000 sq. ft."
+    qualification = inputs.get("promoter_qualification", "Graduate with relevant professional qualifications") or "Graduate with relevant professional qualifications"
+    experience = inputs.get("promoter_experience", "Significant experience in the relevant industry") or "Significant experience in the relevant industry"
     district = inputs.get("district", "")
+
+    # Contact details
+    contact_phone = inputs.get("contact_phone", "") or ""
+    contact_email = inputs.get("contact_email", "") or ""
+    contact_address = inputs.get("contact_address", "") or loc_full
+    contact_website = inputs.get("contact_website", "") or ""
+    contact_gst = inputs.get("contact_gst", "") or ""
+    contact_pan = inputs.get("contact_pan", "") or ""
+
+    # ─── Parse ALL financial values to numbers ─────────
+    tpc_num = _parse_amount(inputs.get("total_project_cost", 0))
+    if tpc_num <= 0:
+        tpc_num = 5000000
+
+    tl_num = _parse_amount(inputs.get("term_loan", 0))
+    pc_num = _parse_amount(inputs.get("promoter_contribution", 0))
+    mc_num = _parse_amount(inputs.get("machinery_cost", 0))
+    wc_num = _parse_amount(inputs.get("working_capital", 0))
+    ar_num = _parse_amount(inputs.get("annual_revenue", 0))
+
+    # Calculate missing values
+    if tl_num <= 0 and pc_num <= 0:
+        tl_num = round(tpc_num * 0.75)
+        pc_num = tpc_num - tl_num
+    elif tl_num > 0 and pc_num <= 0:
+        pc_num = tpc_num - tl_num
+    elif pc_num > 0 and tl_num <= 0:
+        tl_num = tpc_num - pc_num
+
+    if mc_num <= 0:
+        mc_num = round(tpc_num * 0.40)
+    if wc_num <= 0:
+        wc_num = round(tpc_num * 0.15)
+    if ar_num <= 0:
+        ar_num = round(tpc_num * 1.5)
+
+    # Calculate project cost breakdown proportionally from total
+    wc_margin = round(wc_num * 0.25)
+    remaining = tpc_num - mc_num - wc_margin
+    remaining = max(remaining, 0)
+
+    land_cost = round(remaining * 0.30)
+    building_cost = round(remaining * 0.40)
+    misc_assets = round(remaining * 0.12)
+    preop_cost = round(remaining * 0.10)
+    contingency = tpc_num - mc_num - wc_margin - land_cost - building_cost - misc_assets - preop_cost
+    contingency = max(contingency, 0)
+
+    # ─── Format ALL amounts as Indian Rupees ──────────
+    total_cost = _format_inr(tpc_num)
+    term_loan = _format_inr(tl_num)
+    contribution = _format_inr(pc_num)
+    machinery_cost = _format_inr(mc_num)
+    working_capital = _format_inr(wc_num)
+    revenue = _format_inr(ar_num)
+    land_cost_f = _format_inr(land_cost)
+    building_cost_f = _format_inr(building_cost)
+    misc_assets_f = _format_inr(misc_assets)
+    preop_cost_f = _format_inr(preop_cost)
+    contingency_f = _format_inr(contingency)
+    wc_margin_f = _format_inr(wc_margin)
+    wc_loan_f = _format_inr(round(wc_num * 0.75))
+
+    # Contribution percentages
+    pc_pct = round(pc_num / max(tpc_num, 1) * 100)
+    tl_pct = 100 - pc_pct
 
     # ══════════════════════════════════════════════════
     # Build each section with base + extended tiers
@@ -624,16 +715,7 @@ The factory building at {loc_full} will be organized as follows:
 - **Finished Goods Store**: 10% — organized storage with FIFO system
 - **Quality Lab**: 5% — testing and inspection area
 - **Office & Admin**: 5% — management offices and meeting room
-- **Utilities Area**: 5% — DG set, compressor, water treatment
-
-### Maintenance Schedule
-| Equipment | Frequency | Estimated Annual Cost |
-|-----------|-----------|---------------------|
-| Primary Machines | Monthly preventive | ₹1,20,000 |
-| Secondary Equipment | Quarterly | ₹60,000 |
-| Electrical Systems | Half-yearly | ₹30,000 |
-| Building Maintenance | Annual | ₹50,000 |
-| **Total AMC** | | **₹2,60,000** |"""
+- **Utilities Area**: 5% — DG set, compressor, water treatment"""
 
     sections_content["technical_details"] = base_tech + (ext1_tech if pages_per_section >= 1.5 else "")
 
@@ -642,20 +724,20 @@ The factory building at {loc_full} will be organized as follows:
 ### Total Project Cost
 | Sr. No. | Particulars | Amount (₹) |
 |---------|------------|------------|
-| 1 | Land & Site Development | ₹15,00,000 |
-| 2 | Building & Civil Works | ₹20,00,000 |
+| 1 | Land & Site Development | {land_cost_f} |
+| 2 | Building & Civil Works | {building_cost_f} |
 | 3 | Plant & Machinery | {machinery_cost} |
-| 4 | Furniture & Fixtures | ₹3,00,000 |
-| 5 | Pre-operative Expenses | ₹5,00,000 |
-| 6 | Working Capital Margin | {working_capital} |
-| 7 | Miscellaneous Fixed Assets | ₹2,00,000 |
+| 4 | Misc. Fixed Assets | {misc_assets_f} |
+| 5 | Pre-operative Expenses | {preop_cost_f} |
+| 6 | Contingency | {contingency_f} |
+| 7 | Working Capital Margin | {wc_margin_f} |
 | | **Total Project Cost** | **{total_cost}** |
 
 ### Means of Finance
 | Sr. No. | Source | Amount (₹) | % Share |
 |---------|--------|------------|---------|
-| 1 | Promoter's Equity Contribution | {contribution} | 30% |
-| 2 | Term Loan from Bank | {term_loan} | 70% |
+| 1 | Promoter's Equity Contribution | {contribution} | {pc_pct}% |
+| 2 | Term Loan from Bank | {term_loan} | {tl_pct}% |
 | | **Total** | **{total_cost}** | **100%** |
 
 ### Term Loan Details
@@ -683,22 +765,17 @@ The factory building at {loc_full} will be organized as follows:
 ### Pre-Operative Expenses Breakdown
 | Item | Amount (₹) |
 |------|------------|
-| Company Registration & Legal | ₹50,000 |
-| Project Report & Consultancy | ₹1,00,000 |
-| Environmental Clearance | ₹30,000 |
-| Factory License & Permits | ₹40,000 |
-| GST Registration | ₹10,000 |
-| Fire Safety NOC | ₹20,000 |
-| Building Plan Approval | ₹30,000 |
-| Miscellaneous Approvals | ₹20,000 |
-| Trial Run Expenses | ₹1,00,000 |
-| Working Capital Interest (Pre-op) | ₹50,000 |
-| Insurance (First Year) | ₹50,000 |
-| **Total Pre-Operative** | **₹5,00,000** |
+| Company Registration & Legal | {_format_inr(round(preop_cost * 0.20))} |
+| Project Report & Consultancy | {_format_inr(round(preop_cost * 0.35))} |
+| Environmental & Fire NOC | {_format_inr(round(preop_cost * 0.10))} |
+| Factory License & Permits | {_format_inr(round(preop_cost * 0.10))} |
+| Trial Run Expenses | {_format_inr(round(preop_cost * 0.15))} |
+| Insurance & Others | {_format_inr(round(preop_cost * 0.10))} |
+| **Total Pre-Operative** | **{preop_cost_f}** |
 
 ### Loan Repayment Schedule
 | Year | Principal (₹) | Interest (₹) | Total Payment (₹) | Outstanding (₹) |
-|------|---------------|-------------|-------------------|-----------------|
+|------|---------------|-------------|-------------------|-----------------| 
 | Year 1 | Moratorium | {term_loan} interest | Interest only | {term_loan} |
 | Year 2 | Quarterly EMI | Reducing | As per schedule | Reducing |
 | Year 3 | Quarterly EMI | Reducing | As per schedule | Reducing |
@@ -944,6 +1021,47 @@ The project includes a comprehensive business continuity plan:
 | BIS Certification | Bureau of Indian Standards | Planned | Annual |"""
 
     sections_content["risk_assessment"] = base_risk + (ext1_risk if pages_per_section >= 1.5 else "")
+
+    # ─── CONTACT DETAILS ─────────────────────────────
+    base_contact = f"""## Contact Details
+
+### Promoter / Authorized Signatory
+| Parameter | Details |
+|-----------|---------|
+| Name | {promoter} |
+| Designation | Managing Director / Proprietor |
+| Qualification | {qualification} |
+
+### Business Contact Information
+| Parameter | Details |
+|-----------|---------|
+| Business Name | {name} |
+| Registered Address | {contact_address} |
+| Phone / Mobile | {contact_phone if contact_phone else 'To be provided'} |
+| Email | {contact_email if contact_email else 'To be provided'} |
+| Website | {contact_website if contact_website else 'N/A'} |
+
+### Statutory Details
+| Registration | Details |
+|-------------|---------|
+| GST Number | {contact_gst if contact_gst else 'Applied / Under process'} |
+| PAN | {contact_pan if contact_pan else 'Available on request'} |
+| MSME Registration | Udyam registered / Applied |
+| Factory License | Applied / Under process |
+
+### Bank Details
+| Parameter | Details |
+|-----------|---------|
+| Bank Name | To be provided |
+| Branch | {loc_full} |
+| Account Type | Current Account |
+| IFSC Code | To be provided |
+
+### Project Site Address
+{contact_address}
+{f'{district}, ' if district else ''}{state if state else ''}"""
+
+    sections_content["contact_details"] = base_contact
 
     base_conclusion = f"""## Conclusion & Recommendations
 
