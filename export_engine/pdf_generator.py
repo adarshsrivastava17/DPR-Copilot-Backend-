@@ -273,7 +273,7 @@ def generate_pdf(
         # Financial tables
         if key == "project_cost" and financial_data.get("project_cost"):
             story.append(Spacer(1, 10))
-            story.append(_build_themed_table(financial_data["project_cost"], "Project Cost", styles))
+            story.append(_build_themed_table(financial_data["project_cost"], "Project Cost", styles, business_type))
 
         if key in ("means_of_finance", "project_cost") and financial_data.get("means_of_finance"):
             story.append(Spacer(1, 10))
@@ -658,13 +658,31 @@ def _format_inr(amount):
         return f"Rs. {amount:,.0f}"
 
 
-def _build_themed_table(data: dict, title: str, styles):
+def _build_themed_table(data: dict, title: str, styles, business_type: str = ""):
+    # Detect service-type businesses for adaptive labels
+    SERVICE_TYPES = {"service", "services", "logistics", "consulting", "consultancy",
+                     "it", "software", "technology", "trading", "transport",
+                     "transportation", "education", "healthcare", "hospitality",
+                     "real estate", "retail", "e-commerce", "ecommerce",
+                     "digital", "marketing", "agency", "staffing", "finance",
+                     "fintech", "insurance", "travel", "tourism"}
+    bt_lower = business_type.lower() if business_type else ""
+    is_service = any(s in bt_lower for s in SERVICE_TYPES)
+
+    if is_service:
+        labels = [("Office Lease / Setup", "land_and_site"), ("Office Interiors & Furnishing", "building_civil"),
+                  ("Equipment & Technology", "plant_machinery"), ("Misc. Fixed Assets", "misc_fixed_assets"),
+                  ("Pre-operative Exp.", "preoperative_expenses"), ("Contingency", "contingency"),
+                  ("Working Capital", "working_capital_margin")]
+    else:
+        labels = [("Land & Site", "land_and_site"), ("Building & Civil", "building_civil"),
+                  ("Plant & Machinery", "plant_machinery"), ("Misc. Fixed Assets", "misc_fixed_assets"),
+                  ("Pre-operative Exp.", "preoperative_expenses"), ("Contingency", "contingency"),
+                  ("Working Capital", "working_capital_margin")]
+
     header = [Paragraph("Particulars", styles["table_header"]), Paragraph("Amount (Rs.)", styles["table_header"])]
     rows = [header]
-    for name, key in [("Land & Site", "land_and_site"), ("Building & Civil", "building_civil"),
-                      ("Plant & Machinery", "plant_machinery"), ("Misc. Fixed Assets", "misc_fixed_assets"),
-                      ("Pre-operative Exp.", "preoperative_expenses"), ("Contingency", "contingency"),
-                      ("Working Capital", "working_capital_margin")]:
+    for name, key in labels:
         rows.append([name, _format_inr(data.get(key, 0))])
     rows.append([Paragraph("<b>TOTAL</b>", styles["table_header"]),
                  Paragraph(f"<b>{_format_inr(data.get('total', 0))}</b>", styles["table_header"])])
