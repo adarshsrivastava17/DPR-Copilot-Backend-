@@ -1045,16 +1045,26 @@ def _generate_dpr_sync(
         total = len(sections_to_generate)
         use_template = False
 
-        # Try OpenAI for first section, if it fails use templates for all
-        from openai import OpenAI
-        client = OpenAI(api_key=settings.OPENAI_API_KEY)
+        # Check if OpenAI API key is available
+        api_key = settings.OPENAI_API_KEY
+        client = None
+        if not api_key or api_key.strip() == "":
+            print("[DPR] ⚠️  No OPENAI_API_KEY set — using template mode")
+            use_template = True
+        else:
+            try:
+                from openai import OpenAI
+                client = OpenAI(api_key=api_key)
+            except Exception as e:
+                print(f"[DPR] ⚠️  OpenAI client init failed: {e} — using template mode")
+                use_template = True
 
         # Adjust words per section based on actual section count
         for i, section_key in enumerate(sections_to_generate, 1):
             section_name = SECTION_NAMES.get(section_key, section_key)
             print(f"[DPR] ({i}/{total}) Generating: {section_name}...")
 
-            if not use_template:
+            if not use_template and client:
                 # Try AI first
                 input_lines = [f"• {k.replace('_', ' ').title()}: {v}" for k, v in inputs.items() if v and not k.startswith("_")]
                 input_context = "\n".join(input_lines) if input_lines else "General business project"
