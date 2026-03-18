@@ -2,6 +2,9 @@
 
 Generates project cost tables, revenue projections, break-even analysis,
 ROI calculations, cash flow estimates, and balance sheets.
+
+IMPORTANT: All financial data MUST use user-provided values.
+Only calculate values when the user has NOT provided them.
 """
 from typing import Dict, Any
 
@@ -9,25 +12,54 @@ from typing import Dict, Any
 def generate_financial_data(inputs: dict) -> Dict[str, Any]:
     """
     Generate all financial tables and calculations from project inputs.
-    Uses sensible defaults when specific inputs are not provided.
+    PRIORITY: Use exact user-provided values; only derive missing values.
     """
-    # Extract inputs with defaults
-    total_project_cost = _parse_amount(inputs.get("total_project_cost", 5000000))
-    term_loan = _parse_amount(inputs.get("term_loan", total_project_cost * 0.75))
-    promoter_contribution = total_project_cost - term_loan
-    annual_revenue = _parse_amount(inputs.get("annual_revenue", total_project_cost * 1.5))
-    machinery_cost = _parse_amount(inputs.get("machinery_cost", total_project_cost * 0.4))
-    working_capital = _parse_amount(inputs.get("working_capital", total_project_cost * 0.15))
+    # ─── Extract USER-PROVIDED values first ─────────────
+    total_project_cost = _parse_amount(inputs.get("total_project_cost", 0))
+    if total_project_cost <= 0:
+        total_project_cost = 5000000  # Default 50 lakhs only if truly missing
+
+    # Use EXACT user values for these if provided
+    term_loan = _parse_amount(inputs.get("term_loan", 0))
+    promoter_contribution = _parse_amount(inputs.get("promoter_contribution", 0))
+    machinery_cost = _parse_amount(inputs.get("machinery_cost", 0))
+    working_capital = _parse_amount(inputs.get("working_capital", 0))
+    annual_revenue = _parse_amount(inputs.get("annual_revenue", 0))
+
+    # ─── Auto-calculate ONLY missing values ─────────────
+    # If neither term_loan nor promoter_contribution given, split 75/25
+    if term_loan <= 0 and promoter_contribution <= 0:
+        term_loan = round(total_project_cost * 0.75)
+        promoter_contribution = total_project_cost - term_loan
+    elif term_loan > 0 and promoter_contribution <= 0:
+        promoter_contribution = total_project_cost - term_loan
+    elif promoter_contribution > 0 and term_loan <= 0:
+        term_loan = total_project_cost - promoter_contribution
+
+    if machinery_cost <= 0:
+        machinery_cost = round(total_project_cost * 0.40)
+    if working_capital <= 0:
+        working_capital = round(total_project_cost * 0.15)
+    if annual_revenue <= 0:
+        annual_revenue = round(total_project_cost * 1.5)
+
     interest_rate = float(inputs.get("interest_rate", 12.0))
-    num_employees = int(inputs.get("num_employees", 10))
+    num_employees = int(inputs.get("num_employees", 10) or 10)
     revenue_growth = float(inputs.get("revenue_growth", 10.0))  # %
 
-    # ─── Project Cost ───────────────────────────────────
-    land_cost = total_project_cost * 0.15
-    building_cost = total_project_cost * 0.20
-    preoperative = total_project_cost * 0.05
-    misc_assets = total_project_cost * 0.05
-    contingency = total_project_cost * 0.03
+    # ─── Project Cost Breakdown ─────────────────────────
+    # Derive remaining cost items from (total - machinery - working_capital_margin)
+    wc_margin = round(working_capital * 0.25)
+    remaining_cost = total_project_cost - machinery_cost - wc_margin
+    remaining_cost = max(remaining_cost, 0)
+
+    # Distribute remaining among: land, building, misc, preoperative, contingency
+    land_cost = round(remaining_cost * 0.30)
+    building_cost = round(remaining_cost * 0.40)
+    misc_assets = round(remaining_cost * 0.12)
+    preoperative = round(remaining_cost * 0.10)
+    contingency = total_project_cost - machinery_cost - wc_margin - land_cost - building_cost - misc_assets - preoperative
+    contingency = max(contingency, 0)
 
     project_cost = {
         "land_and_site": round(land_cost),
@@ -36,16 +68,17 @@ def generate_financial_data(inputs: dict) -> Dict[str, Any]:
         "misc_fixed_assets": round(misc_assets),
         "preoperative_expenses": round(preoperative),
         "contingency": round(contingency),
-        "working_capital_margin": round(working_capital * 0.25),
+        "working_capital_margin": round(wc_margin),
         "total": round(total_project_cost),
     }
 
     # ─── Means of Finance ──────────────────────────────
     subsidy = _parse_amount(inputs.get("subsidy", 0))
+    wc_loan = round(working_capital * 0.75)
     means_of_finance = {
         "promoter_contribution": round(promoter_contribution),
         "term_loan": round(term_loan),
-        "working_capital_loan": round(working_capital * 0.75),
+        "working_capital_loan": wc_loan,
         "subsidy": round(subsidy),
         "total": round(total_project_cost),
         "debt_equity_ratio": round(term_loan / max(promoter_contribution, 1), 2),
@@ -55,7 +88,7 @@ def generate_financial_data(inputs: dict) -> Dict[str, Any]:
     revenue_projections = []
     raw_material_pct = 0.45
     power_pct = 0.05
-    salary_per_employee = float(inputs.get("avg_salary", 15000)) * 12
+    salary_per_employee = float(inputs.get("avg_salary", 15000) or 15000) * 12
     admin_pct = 0.05
     selling_pct = 0.03
     depreciation_rate = 0.10
@@ -65,7 +98,7 @@ def generate_financial_data(inputs: dict) -> Dict[str, Any]:
     annual_depreciation = depreciable_assets * depreciation_rate
 
     outstanding_loan = term_loan
-    loan_repayment_years = int(inputs.get("loan_tenure", 7))
+    loan_repayment_years = int(inputs.get("loan_tenure", 7) or 7)
     annual_principal = term_loan / max(loan_repayment_years, 1)
 
     for year in range(1, 6):
@@ -80,7 +113,7 @@ def generate_financial_data(inputs: dict) -> Dict[str, Any]:
         selling = round(rev * selling_pct)
         depreciation = round(annual_depreciation * max(1 - depreciation_rate * (year - 1), 0.5))
         interest_term = round(outstanding_loan * interest_rate / 100)
-        interest_wc = round(working_capital * 0.75 * (interest_rate + 1) / 100)
+        interest_wc = round(wc_loan * (interest_rate + 1) / 100)
 
         total_expenses = raw_material + power + salaries + admin + selling + depreciation + interest_term + interest_wc
         pbt = rev - total_expenses
@@ -168,7 +201,7 @@ def generate_financial_data(inputs: dict) -> Dict[str, Any]:
 
         ratios.append({
             "year": yr["year"],
-            "current_ratio": round((working_capital * 0.75 + accumulated_profit * 0.3) / max(working_capital * 0.3, 1), 2),
+            "current_ratio": round((wc_loan + accumulated_profit * 0.3) / max(working_capital * 0.3, 1), 2),
             "debt_equity_ratio": round(outstanding / max(promoter_contribution + accumulated_profit, 1), 2),
             "dscr": round(dscr_num / max(dscr_den, 1), 2),
             "net_profit_margin": yr["net_profit_margin"],
@@ -189,6 +222,15 @@ def generate_financial_data(inputs: dict) -> Dict[str, Any]:
             "revenue_growth": revenue_growth,
             "loan_tenure_years": loan_repayment_years,
         },
+        # Store the original user values for template reference
+        "user_inputs": {
+            "total_project_cost": total_project_cost,
+            "term_loan": term_loan,
+            "promoter_contribution": promoter_contribution,
+            "machinery_cost": machinery_cost,
+            "working_capital": working_capital,
+            "annual_revenue": annual_revenue,
+        },
     }
 
 
@@ -198,14 +240,21 @@ def _parse_amount(value) -> float:
         return float(value)
     if isinstance(value, str):
         cleaned = value.replace(",", "").replace("₹", "").replace("$", "").replace(" ", "")
+        if not cleaned:
+            return 0.0
         try:
             # Handle lakhs/crores notation
-            if "cr" in cleaned.lower():
-                return float(cleaned.lower().replace("cr", "").strip()) * 10000000
-            if "lakh" in cleaned.lower() or "lac" in cleaned.lower():
-                cleaned = cleaned.lower().replace("lakhs", "").replace("lakh", "").replace("lacs", "").replace("lac", "").strip()
-                return float(cleaned) * 100000
+            lower = cleaned.lower()
+            if "cr" in lower:
+                num_part = lower.replace("crores", "").replace("crore", "").replace("cr", "").strip()
+                return float(num_part) * 10000000
+            if "lakh" in lower or "lac" in lower:
+                num_part = lower.replace("lakhs", "").replace("lakh", "").replace("lacs", "").replace("lac", "").strip()
+                return float(num_part) * 100000
+            if "k" in lower:
+                num_part = lower.replace("k", "").strip()
+                return float(num_part) * 1000
             return float(cleaned)
         except ValueError:
-            return 5000000  # Default 50 lakhs
-    return 5000000
+            return 0.0
+    return 0.0
