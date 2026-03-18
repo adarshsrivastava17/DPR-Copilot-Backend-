@@ -716,6 +716,10 @@ Primary raw materials: {raw_materials}
 
     sections_content["product_details"] = base_product + (ext1_product if pages_per_section >= 1.5 else "")
 
+    # Pre-compute joined strings (backslashes not allowed in f-string expressions in Python 3.11)
+    process_steps_text = "\n".join(process_steps)
+    facility_layout_text = "\n".join(facility_layout)
+
     base_tech = f"""## Technical Feasibility & Production
 
 ### Technology Selection
@@ -742,7 +746,7 @@ The project will employ modern, proven {'systems and platforms' if is_service el
 {'Key technology infrastructure and equipment' if is_service else 'Major machinery and equipment'} will be procured from reputed {'vendors' if is_service else 'manufacturers'} with warranties and AMC. Estimated cost: **{machinery_cost}**.
 
 ### {process_label}
-{'\n'.join(process_steps)}
+{process_steps_text}
 
 ### Utilities & Services
 | Utility | Specification | Monthly Cost |
@@ -768,7 +772,7 @@ The project will employ modern, proven {'systems and platforms' if is_service el
 
 ### {facility_label} Layout Plan
 The {'office/facility' if is_service else 'factory building'} at {loc_full} will be organized as follows:
-{'\n'.join(facility_layout)}"""
+{facility_layout_text}"""
 
     sections_content["technical_details"] = base_tech + (ext1_tech if pages_per_section >= 1.5 else "")
 
