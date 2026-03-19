@@ -55,10 +55,11 @@ async def upload_document(
         file_size=len(content),
         is_reference=is_reference,
         project_id=project.id,
-        org_id=current_user.org_id,
+        user_id=current_user.id,
     )
     db.add(doc)
-    await db.flush()
+    await db.commit()
+    await db.refresh(doc)
 
     return {
         "id": str(doc.id),
@@ -96,10 +97,11 @@ async def upload_reference_document(
         file_type=ext,
         file_size=len(content),
         is_reference=True,
-        org_id=current_user.org_id,
+        user_id=current_user.id,
     )
     db.add(doc)
-    await db.flush()
+    await db.commit()
+    await db.refresh(doc)
 
     return {
         "id": str(doc.id),
@@ -149,4 +151,5 @@ async def delete_document(
         os.remove(doc.file_path)
 
     await db.delete(doc)
+    await db.commit()
     return {"message": "Document deleted"}
