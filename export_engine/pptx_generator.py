@@ -1,5 +1,6 @@
 """PowerPoint pitch deck generator using python-pptx."""
 import os
+import re
 from datetime import datetime
 from pptx import Presentation
 from pptx.util import Inches, Pt, Emu
@@ -34,33 +35,34 @@ def generate_pptx(
     prs.slide_width = Inches(13.333)
     prs.slide_height = Inches(7.5)
 
-    # ─── Title Slide ──────────────────────────────────
+    # --- Title Slide
     _add_title_slide(prs, project_name, title)
 
-    # ─── Table of Contents ────────────────────────────
+    # --- Table of Contents
     _add_toc_slide(prs, sections)
 
-    # ─── Section Slides ──────────────────────────────
+    # --- Section Slides (multi-slide for long content)
     for key, content in sections.items():
         display_name = SECTION_DISPLAY_NAMES.get(key, key.replace("_", " ").title())
-        _add_content_slide(prs, display_name, content)
+        _add_content_slides(prs, display_name, content)
 
-    # ─── Financial Highlights ─────────────────────────
+    # --- Financial Highlights
     if financial_data:
         _add_financials_slide(prs, financial_data)
 
-    # ─── Thank You Slide ─────────────────────────────
+    # --- Thank You Slide
     _add_closing_slide(prs, project_name)
 
     prs.save(pptx_path)
     return pptx_path
 
 
+# ------------------------------------------------------------------ #
+#  Title slide                                                        #
+# ------------------------------------------------------------------ #
 def _add_title_slide(prs, project_name, subtitle):
-    """Add a branded title slide."""
-    slide = prs.slides.add_slide(prs.slide_layouts[6])  # blank
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
 
-    # Background
     bg = slide.background
     fill = bg.fill
     fill.solid()
@@ -104,14 +106,13 @@ def _add_title_slide(prs, project_name, subtitle):
     p3.alignment = PP_ALIGN.CENTER
 
 
+# ------------------------------------------------------------------ #
+#  Table of contents                                                  #
+# ------------------------------------------------------------------ #
 def _add_toc_slide(prs, sections):
-    """Add table of contents slide."""
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-
-    # Header
     _add_slide_header(slide, "TABLE OF CONTENTS")
 
-    # Content
     txBox = slide.shapes.add_textbox(Inches(1), Inches(1.5), Inches(5.5), Inches(5))
     tf = txBox.text_frame
     tf.word_wrap = True
@@ -124,7 +125,6 @@ def _add_toc_slide(prs, sections):
         p.font.color.rgb = DARK
         p.space_after = Pt(4)
 
-    # Second column if more than 13 sections
     remaining = list(sections.keys())[13:]
     if remaining:
         txBox2 = slide.shapes.add_textbox(Inches(7), Inches(1.5), Inches(5.5), Inches(5))
@@ -139,52 +139,197 @@ def _add_toc_slide(prs, sections):
             p.space_after = Pt(4)
 
 
-def _add_content_slide(prs, title, content):
-    """Add a content slide with title and bullet points."""
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-
-    # Header
-    _add_slide_header(slide, title)
-
-    # Content area
-    txBox = slide.shapes.add_textbox(Inches(0.8), Inches(1.5), Inches(11.7), Inches(5.5))
-    tf = txBox.text_frame
-    tf.word_wrap = True
-
-    # Parse content into bullet points (take first ~800 chars for slide)
+# ------------------------------------------------------------------ #
+#  Content slides (multi-slide, proper tables)                        #
+# ------------------------------------------------------------------ #
+def _add_content_slides(prs, title, content):
+    """Add one or more content slides for a section.
+    Long content is split across slides. Tables render as native PPTX tables."""
     content = content or ""
     lines = content.split("\n")
-    char_count = 0
-    max_chars = 800
+
+    # Parse lines into structured chunks: text blocks and table blocks
+    chunks = []
+    text_buf = []
+    table_buf = []
+    in_table = False
 
     for line in lines:
-        line = line.strip().replace("**", "").replace("*", "").replace("#", "")
-        if not line:
-            continue
+        stripped = line.strip()
+        is_tbl = stripped.startswith("|") and "|" in stripped[1:]
+        is_sep = bool(re.match(r"^\|[\s\-:|]+\|", stripped))
 
-        char_count += len(line)
-        if char_count > max_chars:
-            break
-
-        is_bullet = line.startswith("- ") or line.startswith("• ") or line.startswith("· ")
-        text = line.lstrip("-•· ").strip()
-
-        if not text:
-            continue
-
-        if tf.paragraphs[0].text == "":
-            p = tf.paragraphs[0]
+        if is_tbl or is_sep:
+            if not in_table:
+                if text_buf:
+                    chunks.append(("text", text_buf))
+                    text_buf = []
+                in_table = True
+            if not is_sep:
+                table_buf.append(stripped)
         else:
-            p = tf.add_paragraph()
+            if in_table:
+                if table_buf:
+                    chunks.append(("table", table_buf))
+                    table_buf = []
+                in_table = False
+            if stripped:
+                text_buf.append(stripped)
 
-        p.text = f"{'•  ' if is_bullet else ''}{text}"
-        p.font.size = Pt(12)
-        p.font.color.rgb = DARK
-        p.space_after = Pt(4)
+    if table_buf:
+        chunks.append(("table", table_buf))
+    if text_buf:
+        chunks.append(("text", text_buf))
+
+    # Paginate into slide-pages
+    MAX_LINES = 16
+    pages = []          # list of list-of-(type, data)
+    cur_page = []
+    cur_count = 0
+
+    for ctype, cdata in chunks:
+        if ctype == "table":
+            need = len(cdata) + 2
+            if cur_count + need > MAX_LINES and cur_page:
+                pages.append(cur_page)
+                cur_page = []
+                cur_count = 0
+            cur_page.append(("table", cdata))
+            cur_count += need
+        else:
+            for ln in cdata:
+                if cur_count >= MAX_LINES:
+                    pages.append(cur_page)
+                    cur_page = []
+                    cur_count = 0
+                cur_page.append(("line", ln))
+                cur_count += 1
+
+    if cur_page:
+        pages.append(cur_page)
+
+    if not pages:
+        pages = [[("line", "Content not available.")]]
+
+    # Render each page
+    for pidx, page in enumerate(pages):
+        slide = prs.slides.add_slide(prs.slide_layouts[6])
+        stitle = title if pidx == 0 else f"{title} (contd.)"
+        _add_slide_header(slide, stitle)
+
+        y = Inches(1.5)
+        for itype, idata in page:
+            if itype == "table":
+                y = _render_table(slide, idata, y)
+            else:
+                y = _render_line(slide, idata, y)
 
 
+def _render_line(slide, line, y):
+    """Render one line of markdown text as a PPTX text box."""
+    clean = line.strip()
+    if not clean:
+        return y
+
+    is_heading = clean.startswith("#")
+    is_bullet = clean.startswith("- ") or clean.startswith("* ") or clean.startswith("  -")
+    num_match = re.match(r"^(\d+)\.\s+(.+)", clean)
+    is_emoji = any(clean.startswith(e) for e in ["  ", "  ", "  ", "  "])
+
+    if is_heading:
+        level = len(re.match(r"^#+", clean).group())
+        clean = clean.lstrip("#").strip()
+        font_size = {1: 18, 2: 16, 3: 14, 4: 13}.get(level, 12)
+        bold = True
+        color = NAVY
+        indent = 0.8
+    elif is_bullet:
+        clean = clean.lstrip("-*  ").strip()
+        clean = f"  {clean}"
+        font_size = 11
+        bold = False
+        color = DARK
+        indent = 1.0
+    elif num_match:
+        clean = f"{num_match.group(1)}.  {num_match.group(2)}"
+        font_size = 11
+        bold = False
+        color = DARK
+        indent = 1.0
+    else:
+        font_size = 11
+        bold = False
+        color = DARK
+        indent = 0.8
+
+    # Strip markdown bold/italic
+    clean = clean.replace("**", "").replace("*", "")
+    # Replace arrow markers
+    clean = clean.replace(" -> ", " > ").replace("->", " > ")
+
+    txBox = slide.shapes.add_textbox(Inches(indent), y, Inches(11.5), Inches(0.35))
+    tf = txBox.text_frame
+    tf.word_wrap = True
+    p = tf.paragraphs[0]
+    p.text = clean
+    p.font.size = Pt(font_size)
+    p.font.color.rgb = color
+    p.font.bold = bold
+    p.space_after = Pt(2)
+
+    return y + Inches(0.28)
+
+
+def _render_table(slide, table_lines, y):
+    """Render a markdown-style table as a native PPTX table."""
+    if not table_lines:
+        return y
+
+    rows_data = []
+    for line in table_lines:
+        cells = [c.strip() for c in line.split("|")]
+        cells = [c for c in cells if c != ""]
+        if cells:
+            rows_data.append(cells)
+
+    if not rows_data:
+        return y
+
+    num_cols = max(len(r) for r in rows_data)
+    num_rows = len(rows_data)
+
+    tw = Inches(11.5)
+    rh = Inches(0.32)
+
+    ts = slide.shapes.add_table(num_rows, num_cols, Inches(0.8), y, tw, rh * num_rows)
+    table = ts.table
+
+    for ri, row in enumerate(rows_data):
+        for ci in range(num_cols):
+            cell = table.cell(ri, ci)
+            txt = row[ci].replace("**", "").replace("*", "") if ci < len(row) else ""
+            cell.text = txt
+            p = cell.text_frame.paragraphs[0]
+            p.font.size = Pt(9)
+
+            if ri == 0:
+                cell.fill.solid()
+                cell.fill.fore_color.rgb = NAVY
+                p.font.color.rgb = WHITE
+                p.font.bold = True
+            else:
+                p.font.color.rgb = DARK
+                if ri % 2 == 0:
+                    cell.fill.solid()
+                    cell.fill.fore_color.rgb = LIGHT_BG
+
+    return y + rh * num_rows + Inches(0.15)
+
+
+# ------------------------------------------------------------------ #
+#  Financial highlights                                               #
+# ------------------------------------------------------------------ #
 def _add_financials_slide(prs, financial_data):
-    """Add a financial highlights summary slide."""
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     _add_slide_header(slide, "FINANCIAL HIGHLIGHTS")
 
@@ -208,22 +353,19 @@ def _add_financials_slide(prs, financial_data):
         highlights.append(("Year 1 Net Profit", _format_inr(yr1.get("net_profit", 0))))
         highlights.append(("Year 5 Revenue", _format_inr(yr5.get("revenue", 0))))
 
-    # Create 2x4 grid of highlight boxes
     for i, (label, value) in enumerate(highlights[:8]):
         col = i % 4
         row = i // 4
         x = Inches(0.8 + col * 3.1)
-        y = Inches(1.8 + row * 2.5)
+        y_pos = Inches(1.8 + row * 2.5)
 
-        # Box background
-        shape = slide.shapes.add_shape(1, x, y, Inches(2.8), Inches(2))
+        shape = slide.shapes.add_shape(1, x, y_pos, Inches(2.8), Inches(2))
         shape.fill.solid()
         shape.fill.fore_color.rgb = LIGHT_BG
         shape.line.color.rgb = TEAL
         shape.line.width = Pt(1)
 
-        # Value
-        txBox = slide.shapes.add_textbox(x + Inches(0.15), y + Inches(0.3), Inches(2.5), Inches(0.8))
+        txBox = slide.shapes.add_textbox(x + Inches(0.15), y_pos + Inches(0.3), Inches(2.5), Inches(0.8))
         tf = txBox.text_frame
         p = tf.paragraphs[0]
         p.text = value
@@ -232,8 +374,7 @@ def _add_financials_slide(prs, financial_data):
         p.font.bold = True
         p.alignment = PP_ALIGN.CENTER
 
-        # Label
-        txBox2 = slide.shapes.add_textbox(x + Inches(0.15), y + Inches(1.2), Inches(2.5), Inches(0.6))
+        txBox2 = slide.shapes.add_textbox(x + Inches(0.15), y_pos + Inches(1.2), Inches(2.5), Inches(0.6))
         tf2 = txBox2.text_frame
         p2 = tf2.paragraphs[0]
         p2.text = label
@@ -242,8 +383,10 @@ def _add_financials_slide(prs, financial_data):
         p2.alignment = PP_ALIGN.CENTER
 
 
+# ------------------------------------------------------------------ #
+#  Closing slide                                                      #
+# ------------------------------------------------------------------ #
 def _add_closing_slide(prs, project_name):
-    """Add a closing/thank you slide."""
     slide = prs.slides.add_slide(prs.slide_layouts[6])
 
     bg = slide.background
@@ -263,7 +406,7 @@ def _add_closing_slide(prs, project_name):
     txBox2 = slide.shapes.add_textbox(Inches(1), Inches(4), Inches(11), Inches(1))
     tf2 = txBox2.text_frame
     p2 = tf2.paragraphs[0]
-    p2.text = f"{project_name}"
+    p2.text = project_name
     p2.font.size = Pt(18)
     p2.font.color.rgb = WHITE
     p2.alignment = PP_ALIGN.CENTER
@@ -277,15 +420,15 @@ def _add_closing_slide(prs, project_name):
     p3.alignment = PP_ALIGN.CENTER
 
 
+# ------------------------------------------------------------------ #
+#  Helpers                                                            #
+# ------------------------------------------------------------------ #
 def _add_slide_header(slide, title):
-    """Add a branded header to a slide."""
-    # Gold bar
     shape = slide.shapes.add_shape(1, Inches(0), Inches(0), Inches(13.333), Inches(1.2))
     shape.fill.solid()
     shape.fill.fore_color.rgb = NAVY
     shape.line.fill.background()
 
-    # Title text
     txBox = slide.shapes.add_textbox(Inches(0.8), Inches(0.25), Inches(11), Inches(0.7))
     tf = txBox.text_frame
     p = tf.paragraphs[0]
@@ -294,7 +437,6 @@ def _add_slide_header(slide, title):
     p.font.color.rgb = WHITE
     p.font.bold = True
 
-    # Gold accent line under header
     line = slide.shapes.add_shape(1, Inches(0), Inches(1.2), Inches(13.333), Inches(0.04))
     line.fill.solid()
     line.fill.fore_color.rgb = GOLD
@@ -302,15 +444,13 @@ def _add_slide_header(slide, title):
 
 
 def _format_inr(amount):
-    """Format number in Indian currency notation."""
     try:
         amount = float(amount)
     except (ValueError, TypeError):
         return str(amount)
-
     if amount >= 10000000:
-        return f"₹{amount/10000000:.2f} Cr"
+        return f"Rs. {amount/10000000:.2f} Cr"
     elif amount >= 100000:
-        return f"₹{amount/100000:.2f} L"
+        return f"Rs. {amount/100000:.2f} L"
     else:
-        return f"₹{amount:,.0f}"
+        return f"Rs. {amount:,.0f}"
